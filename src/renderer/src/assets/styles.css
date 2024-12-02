@@ -1,0 +1,30 @@
+table {
+    width: 100%;
+    border-top: 1px solid lightgray;
+    border-bottom: 1px solid lightgray;
+    background-color: #fff;
+    font-size: 14px;
+  }
+  tfoot {
+    background-color: #eee;
+  }
+  th,
+  td {
+    position: relative;
+    padding: 10px 14px;
+    border-right: 1px solid lightgray;
+    border-bottom: 1px solid lightgray;
+
+  }
+  th,
+  td:last-child {
+    border-right: none;
+  }
+  th {
+    border-top: 1px solid lightgray;
+    border-bottom: 1px solid lightgray;
+    border-right: 1px solid lightgray;
+    border-left: 1px solid lightgray;
+    background-color: #eee;
+  }
+  

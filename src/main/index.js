@@ -10,12 +10,12 @@ const crwalerApp = express();
 const port = 4000;
 
 crwalerApp.get('/price', async (req, res) => {
-    res.header("Access-Control-Allow-Origin", "*");
+  
 
-    const models = ["BQ4422-161", "CZ0790-003"];
+    const models = req.query.models;
 
     const browser = await puppeteer.launch({
-        headless: false,
+        headless: true,
         args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
 
@@ -27,15 +27,14 @@ crwalerApp.get('/price', async (req, res) => {
     for (const model of models) {
 
         const price = {
-            model: "",
-            name: "",
+            model: "-",
+            name: "-",
             kream: 0,
             nike: 0
         };
 
         const kreamUrl = "https://kream.co.kr/search?keyword=" + model;
         await page.goto(kreamUrl);
-        console.log(await page.evaluate('navigator.userAgent'));
 
         const kreamPriceSelector = "#__layout > div > div.layout__main.search-container > div.content-container > div.content > div > div.shop-content > div > div.search_result.md > div.search_result_list > div > div > a > div.price.price_area > p.amount";
         
@@ -46,7 +45,7 @@ crwalerApp.get('/price', async (req, res) => {
                 kreamPriceSelector, element => {
                     return element.textContent;
                 });
-            price.kream = commaString2Int(kreamPriceData?.split(' ').join('').slice(0, -1));
+            price.kream = commaString2Int(kreamPriceData?.split(' ').join('').slice(0, -1)).toLocaleString();
 
         } catch (error) {
             console.log('Failed');
@@ -84,7 +83,7 @@ crwalerApp.get('/price', async (req, res) => {
 
                     return element.textContent;
                 });
-            price.nike = commaString2Int(nikeData?.split(' ').join('').slice(0, -1));
+            price.nike = commaString2Int(nikeData?.split(' ').join('').slice(0, -1)).toLocaleString();
 
         } catch (error) {
             console.log('Failed');
@@ -95,7 +94,9 @@ crwalerApp.get('/price', async (req, res) => {
     }
 
     await browser.close();
+
     res.send(JSON.stringify(priceArry));
+    
 
 });
 
@@ -110,18 +111,11 @@ function commaString2Int(stringNumber) {
 
 
 
-
-
-
-
-
-
-
 function createWindow() {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
-    width: 900,
-    height: 670,
+    width: 1920,
+    height: 1080,
     show: false,
     autoHideMenuBar: true,
     ...(process.platform === 'linux' ? { icon } : {}),
@@ -145,9 +139,13 @@ function createWindow() {
 
   ipcMain.on('fetch-data', async (event, args) => {
     try {
-      console.log('here');
-       const response = await axios.get('http://localhost:4000/price');
-       console.log(response.data);
+       
+       const response = await axios.get('http://localhost:4000/price',
+        {
+          params: {models: args.models}
+        }
+       );
+       
        event.reply('fetch-data-response', response.data);
     } catch (error) {
        console.error(error);
