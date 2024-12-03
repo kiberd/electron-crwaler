@@ -1,8 +1,9 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, Tray } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import axios from 'axios'
+import { timeout } from 'puppeteer'
 
 const express = require('express');
 const puppeteer = require('puppeteer');
@@ -10,103 +11,144 @@ const crwalerApp = express();
 const port = 4000;
 
 crwalerApp.get('/price', async (req, res) => {
-  
 
-    const models = req.query.models;
 
-    const browser = await puppeteer.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
+  const models = req.query.models;
+  const set = new Set(models);
+  const uniqModels = [...set];
 
-    const page = await browser.newPage();
-    page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
+  const browser = await puppeteer.launch({
+    headless: false,
+    args: ['--no-sandbox', '--disable-setuid-sandbox']
+  });
 
-    const priceArry = [];
+  const page = await browser.newPage();
+  page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
 
-    for (const model of models) {
+  const priceArry = [];
 
-        const price = {
-            model: "-",
-            name: "-",
-            kream: 0,
-            nike: 0
-        };
+  for (const model of uniqModels) {
 
-        const kreamUrl = "https://kream.co.kr/search?keyword=" + model;
-        await page.goto(kreamUrl);
+    const price = {
+      model: "-",
+      name: "-"
+    };
 
-        const kreamPriceSelector = "#__layout > div > div.layout__main.search-container > div.content-container > div.content > div > div.shop-content > div > div.search_result.md > div.search_result_list > div > div > a > div.price.price_area > p.amount";
-        
-        try {
+    price.model = model;
 
-            await page.waitForSelector(kreamPriceSelector, { timeout: 3000 });
-            const kreamPriceData = await page.$eval(
-                kreamPriceSelector, element => {
-                    return element.textContent;
-                });
-            price.kream = commaString2Int(kreamPriceData?.split(' ').join('').slice(0, -1)).toLocaleString();
 
-        } catch (error) {
-            console.log('Failed');
-        }
+    const targetList = [
+      {
+        name: "kream",
+        url: "https://kream.co.kr/search?keyword=" + model,
+        nameSelector: 'xpath///*[@id="__layout"]/div/div[2]/div[1]/div[6]/div/div[1]/div/div[1]/div[1]/div/div/a/div[2]/div[1]/div/p[2]',
+        priceSelector: 'xpath///*[@id="__layout"]/div/div[2]/div[1]/div[6]/div/div[1]/div/div[1]/div[1]/div/div/a/div[3]/p[1]/text()',
+        // priceSelector: '#__layout > div > div.layout__main.search-container > div.content-container > div.content > div > div.shop-content > div > div.search_result.md > div.search_result_list > div > div > a > div.price.price_area > p.amount' 
+      },
+      {
+        name: "soldout",
+        url: "https://www.soldout.co.kr/search/product/list?keyword=" + model,
+        nameSelector: 'xpath///*[@id="__layout"]/div/div[2]/div/div[2]/div[2]/ul/div/a/div[2]/p[1]',
+        priceSelector: 'xpath///*[@id="__layout"]/div/div[2]/div/div[2]/div[2]/ul/div/a/div[2]/p[2]'
+      },
+      // {
+      //   name: "poizon",
+      //   url: "https://www.poizon.com/search?keyword=" + model,
+      //   nameSelector: "-",
+      //   priceSelector: "#__next > div > section > div > div > div:nth-child(1) > div.GoodsFilterList_content__tl5FA > div.GoodsFilterList_right__8kWIb > div.GoodsList_goodsList__hPoCW > a > div.GoodsItem_priceWrap__Ikha8 > div"
+      // },
+      {
+        name: "nike",
+        url: "https://www.nike.com/kr/w?q=" + model,
+        nameSelector: '-',
+        priceSelector: 'xpath///*[@id="skip-to-products"]/div[1]/div/figure/div/div[3]/div/div/div/div'
+      },
+      {
+        name: "adidas",
+        url: "https://www.adidas.co.kr/search?q=" + model,
+        nameSelector: 'xpath///*[@id="main-content"]/div[2]/div[2]/div[1]/h1/span',
+        priceSelector: 'xpath///*[@id="main-content"]/div[2]/div[2]/div[1]/div[2]/div/div/div/div'
+      },
+      {
+        name: "moosinsa",
+        url: "https://www.musinsa.com/search/goods?keyword=" + model,
+        nameSelector: 'xpath///*[@id="commonLayoutContents"]/div/div[3]/div/div/div/div/div/div/div/div[2]/div/div[1]/a[2]/span',
+        priceSelector: 'xpath///*[@id="commonLayoutContents"]/div/div[3]/div/div/div/div/div/div/div/div[2]/div/div[1]/div/span[2]'
+      },
+      {
+        name: "folder",
+        url: "https://folderstyle.com/shop/search?searchText=" + model,
+        nameSelector: 'xpath///*[@id="devListContents"]/li/a[2]/div/span[2]',
+        priceSelector: 'xpath///*[@id="devListContents"]/li/a[2]/div/div/span'
+      }
 
-        try {
+    ];
 
-            const kreamNameSelector = "#__layout > div > div.layout__main.search-container > div.content-container > div.content > div > div.shop-content > div > div.search_result.md > div.search_result_list > div > div > a > div.product_info_area > div.title > div > p.translated_name";
-            await page.waitForSelector(kreamNameSelector, { timeout: 3000 });
-            
-            const kreamNameData = await page.$eval(
-                kreamNameSelector, element => {
-                    return element.textContent;
+    for (const target of targetList) {
+
+      await page.goto(target.url);
+
+      // Get name
+      try {
+        if (price.name === "-") {
+
+          await page.waitForSelector(target.nameSelector, { timeout: 500 });
+
+          const nameData = await page.$eval(
+            target.nameSelector, element => {
+              return element.textContent;
             });
 
-            price.name = kreamNameData;
 
-
-        } catch (error) {
-            console.log('Failed');
+          price.name = nameData;
         }
 
-        price.model = model;
+      } catch (error) {
+        console.log("Failed to get " + target.name + " name");
+      }
 
-        // https://www.nike.com/kr/w?q=BQ4422-161
+      // Get price
+      try {
 
-        const nikeUrl = "https://www.nike.com/kr/w?q=" + model;
-        await page.goto(nikeUrl);
+        await page.waitForSelector(target.priceSelector, { timeout: 500 });
 
-        try {
-            const nikeSelector = "#skip-to-products > div > div > figure > div > div.product-card__animation_wrapper > div > div > div > div";
-            await page.waitForSelector(nikeSelector, { timeout: 3000 });
-            const nikeData = await page.$eval(
-                nikeSelector, element => {
-
-                    return element.textContent;
-                });
-            price.nike = commaString2Int(nikeData?.split(' ').join('').slice(0, -1)).toLocaleString();
-
-        } catch (error) {
-            console.log('Failed');
+        // Filter nike
+        if (target.name === "nike") {
+          const aHref = await page.$eval("#skip-to-products > div:nth-child(1) > div > figure > a.product-card__img-link-overlay", a => a.getAttribute('href'));
+          const hrefSlice = aHref.split("/");
+          if (hrefSlice[hrefSlice.length - 1] !== model) throw new Error();
         }
 
-        priceArry.push(price);
+        const priceData = await page.$eval(
+          target.priceSelector, element => {
+            return element.textContent;
+          });
 
+
+        price[target.name] = commaString2Int(priceData?.split(' ').join('').slice(0, -1)).toLocaleString()
+
+      } catch (error) {
+        console.log('Failed to get ' + target.name + ' price');
+      }
     }
 
-    await browser.close();
 
-    res.send(JSON.stringify(priceArry));
-    
+    priceArry.push(price);
+
+  }
+
+  await browser.close();
+  res.send(JSON.stringify(priceArry));
 
 });
 
 
 crwalerApp.listen(port, () => {
-    console.log(`Crawler app listening on port ${port}`)
+  console.log(`Crawler app listening on port ${port}`)
 });
 
 function commaString2Int(stringNumber) {
-    return parseInt(stringNumber.replace(/,/g, ''));
+  return parseInt(stringNumber.replace(/,/g, ''));
 }
 
 
@@ -139,16 +181,16 @@ function createWindow() {
 
   ipcMain.on('fetch-data', async (event, args) => {
     try {
-       
-       const response = await axios.get('http://localhost:4000/price',
+
+      const response = await axios.get('http://localhost:4000/price',
         {
-          params: {models: args.models}
+          params: { models: args.models }
         }
-       );
-       
-       event.reply('fetch-data-response', response.data);
+      );
+
+      event.reply('fetch-data-response', response.data);
     } catch (error) {
-       console.error(error);
+      console.error(error);
     }
   });
 
